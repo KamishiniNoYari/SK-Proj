@@ -9,6 +9,7 @@
 #include "server.h"
 #include <unordered_map>
 #include <algorithm>
+#include <condition_variable>
 
 
 #pragma clang diagnostic push
@@ -21,6 +22,9 @@ int gamestart = 0;
 vector<int> sockets;
 int players = 0;
 unordered_map<int, vector<string>> global_answers;
+mutex m1;
+condition_variable cv;
+bool gamestarted = false;
 
 int main() {
     int new_socket;
@@ -89,11 +93,8 @@ int main() {
     return 0;
 }
 void sendtoall(string message) {
-    char cstr[message.size() + 1];
-    memset(cstr,0,sizeof(cstr));
-    strcpy(cstr, message.c_str());
     for (int fd : sockets) {
-        write(fd, cstr, message.size() + 1);
+        write(fd, message.c_str(), message.size() + 1);
     }
 }
 int iscountry(string word,char letter)
@@ -245,7 +246,6 @@ string placechecker(int fd,unordered_map<int,int> points)
 void * timer_handler(void *arg)
 {
     char buffer[BUFFER_SIZE];
-    bool gamestarted = false;
     srand(time(NULL));
 
     char random_letter;
@@ -254,86 +254,74 @@ void * timer_handler(void *arg)
     int actual_time = 0;
     int players_answered = 0;
     int rounds = 0;
-    while(true)
+    unique_lock<mutex>lk(m1);
+    cv.wait(lk,[]{return gamestarted;});
+    for (int player : sockets) {
+        points[player] = 0;
+    }
+    lk.unlock();
+    cv.notify_all();
+    while(gamestarted)
     {
-        if (gamestart>=players/2 && players>=2) {
-            gamestarted = true;
-            for (int player : sockets) {
-                points[player] = 0;
-            }
+        //generate random letter
+        string temp;
+        random_letter = 'a' +(rand() % 26);
+        temp.push_back(random_letter);
+        sendtoall(temp);
+        for( int player : sockets){
+            timeaswered[player] = -1;
         }
-            while(gamestarted)
-            {
-                //generate random letter
-                string temp;
-                random_letter = 'a' +(rand() % 26);
-                temp.push_back(random_letter);
-                sendtoall(temp);
-
-                for( int player : sockets){
-                    timeaswered[player] = -1;
+        //sendtoall("Wylosowana literka: "+random_letter);
+        rounds++;
+        while(actual_time<30 && players_answered <= players/2)
+        {
+            actual_time++;
+            for( const auto&[key, value]: global_answers){
+                if (value.empty()){continue;}
+                else{if (timeaswered[key] ==-1) {
+                    timeaswered[key] = actual_time;
+                    players_answered++;
                 }
-                //sendtoall("Wylosowana literka: "+random_letter);
-                rounds++;
-
-                while(actual_time<30 && players_answered <= players/2)
-                {
-                    actual_time++;
-                    for( const auto&[key, value]: global_answers){
-                        if (value.empty()){continue;}
-                        else{if (timeaswered[key] ==-1) {
-                                timeaswered[key] = actual_time;
-                                players_answered++;
-                            }
-                        }
-                    }
-                    sleep(1);
-                }
-                players_answered=0;
-                sendtoall("End of round\n");
-                //calculation points
-                sendtoall("Calculating points\n");
-                for( const auto&[key, value]: global_answers){
-                    points[key]+=iscountry(value[0],random_letter)+
-                            iscity(value[1],random_letter)+
-                            isanimal(value[2],random_letter)+
-                            isplant(value[3],random_letter)+
-                            isname(value[4],random_letter);
-                    if (timeaswered[key] !=-1) {points[key]+=15 - 0.5*timeaswered[key];}
-                    string point_mess=to_string(points[key]);
-                    timeaswered[key]=-1;
-                    global_answers[key].clear();
-                    char point_message[BUFFER_SIZE];
-                    memset(point_message,'\n',sizeof(point_mess));
-                    for(int i=0;i<sizeof(point_mess);i++){
-                        if(point_mess[i]=='\n')break;
-                        point_message[i]=point_mess[i];}
-                    write(key,point_message,sizeof(point_message));
-
-                }
-
-
-
-                actual_time = 0;
-                for ( int player : sockets){timeaswered[player] = -1;}
-                if(rounds==roundsNumber)
-                {
-                    for (int player : sockets)
-                    {
-                        string place = "PLACE "+placechecker(player,points)+"\n";
-                        char cstr[place.size()+1];
-                        strcpy(cstr,place.c_str());
-                        write(player,cstr,place.size()+1);
-                        sendtoall("END\n");
-                    }
-                    //przechodzimy do wysyłania rankingu i odłączamy użytkowników
-                    //do zrobienia
-
                 }
             }
-
-
-
+            sleep(1);
+        }
+        players_answered=0;
+        sendtoall("End of round\n");
+        //calculation points
+        sendtoall("Calculating points\n");
+        for( const auto&[key, value]: global_answers){
+            points[key]+=iscountry(value[0],random_letter)+
+                    iscity(value[1],random_letter)+
+                    isanimal(value[2],random_letter)+
+                    isplant(value[3],random_letter)+
+                    isname(value[4],random_letter);
+            if (timeaswered[key] !=-1) {points[key]+=15 - 0.5*timeaswered[key];}
+            string point_mess=to_string(points[key]);
+            timeaswered[key]=-1;
+            global_answers[key].clear();
+            char point_message[BUFFER_SIZE];
+            memset(point_message,'\n',sizeof(point_mess));
+            for(int i=0;i<sizeof(point_mess);i++){
+                if(point_mess[i]=='\n')break;
+                point_message[i]=point_mess[i];}
+            write(key,point_message,sizeof(point_message));
+        }
+        actual_time = 0;
+        for ( int player : sockets){timeaswered[player] = -1;}
+        if(rounds==roundsNumber)
+        {
+            for (int player : sockets)
+            {
+                string place = "PLACE "+placechecker(player,points)+"\n";
+                char cstr[place.size()+1];
+                strcpy(cstr,place.c_str());
+                write(player,cstr,place.size()+1);
+                sendtoall("END\n");
+            }
+            //przechodzimy do wysyłania rankingu i odłączamy użytkowników
+            //do zrobienia
+        }
     }
     return (void *)0;
 }
@@ -357,12 +345,16 @@ void * client_handler(void * arg)
             exit(EXIT_FAILURE);
         }
         string readstring = "";
-        for(int i=0;i<=sizeof(buffer);i++){ if(buffer[i]!=NULL && buffer[i]!='\n')readstring.push_back(buffer[i]);}
+        readstring.append(buffer,valread-1);
 
         if(readstring == START && !starting){
             starting = true;
-
             gamestart++;
+            if (gamestart>=players/2 && players>=2) {
+                lock_guard<mutex>lk(m1);
+                gamestarted=true;
+                cv.notify_all();
+            }
         }
         if(readstring.substr(0,2)==ANSWER)
         {
