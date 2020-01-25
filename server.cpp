@@ -10,6 +10,8 @@
 #include <unordered_map>
 #include <algorithm>
 #include <condition_variable>
+#include <chrono>
+#include <ctime>
 
 
 #pragma clang diagnostic push
@@ -25,7 +27,8 @@ unordered_map<int, vector<string>> global_answers;
 mutex m1;
 condition_variable cv;
 bool gamestarted = false;
-
+bool roundfinish = false;
+unordered_map<int, int> timeaswered;
 int main() {
     int new_socket;
     struct sockaddr_in new_address;
@@ -249,7 +252,7 @@ void * timer_handler(void *arg)
     srand(time(NULL));
 
     char random_letter;
-    unordered_map<int, int> timeaswered;
+    \
     unordered_map<int, int> points;
     int actual_time = 0;
     int players_answered = 0;
@@ -264,28 +267,19 @@ void * timer_handler(void *arg)
     while(gamestarted)
     {
         //generate random letter
-        string temp;
+        string temp ="";
         random_letter = 'a' +(rand() % 26);
         temp.push_back(random_letter);
-        sendtoall(temp);
+        sendtoall(temp+"\n");
         for( int player : sockets){
             timeaswered[player] = -1;
         }
         //sendtoall("Wylosowana literka: "+random_letter);
         rounds++;
-        while(actual_time<30 && players_answered <= players/2)
-        {
-            actual_time++;
-            for( const auto&[key, value]: global_answers){
-                if (value.empty()){continue;}
-                else{if (timeaswered[key] ==-1) {
-                    timeaswered[key] = actual_time;
-                    players_answered++;
-                }
-                }
-            }
-            sleep(1);
-        }
+        sendtoall("RO\n");
+        roundfinish = false;
+        unique_lock<mutex> lk(m1);
+        cv.wait_until(lk,std::chrono::system_clock::now()+30s,[]{return roundfinish;});
         players_answered=0;
         sendtoall("End of round\n");
         //calculation points
@@ -333,6 +327,7 @@ void * client_handler(void * arg)
     bool client_connected = true;
     string outputMessage = "";
     bool starting = false;
+    auto start = std::chrono::system_clock::now();
 
     while(client_connected)
     {
@@ -356,7 +351,11 @@ void * client_handler(void * arg)
                 cv.notify_all();
             }
         }
-        if(readstring.substr(0,2)==ANSWER)
+        if(readstring.substr(0,2) == ROUND)
+        {
+            auto start = std::chrono::system_clock::now();
+        }
+        if(readstring.substr(0,2)==ANSWER && timeaswered[client_sock]==-1)
         {
             string answerstring="";
             vector<string> answers;
@@ -370,6 +369,21 @@ void * client_handler(void * arg)
                 answerstring.push_back(readstring[i]);
             }
             global_answers[client_sock] = answers;
+            auto end = std::chrono::system_clock::now();
+            std::chrono::duration<double> elapsed = end - start;
+            timeaswered[client_sock]=(int)elapsed.count();
+            int players_answered = 0;
+            for( const auto&[key, value]: timeaswered){
+                if(value!=-1)
+                {
+                    players_answered++;
+                }
+            }
+            if(players_answered>players/2){
+                lock_guard<mutex>lk(m1);
+                roundfinish=true;
+                cv.notify_all();
+            }
 
         }
         if(readstring.substr(0,3)==END)
@@ -378,6 +392,7 @@ void * client_handler(void * arg)
             pthread_exit(NULL);
 
         }
+
 
 
 

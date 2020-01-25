@@ -28,6 +28,7 @@ using namespace std;
 const string START = "START";
 const string ANSWER = "AN";
 const string END = "END";
+const string ROUND = "RO";
 const string cities[] = {"Augustów", "Ateny", "Antoninek", "Andrychów", "Anieliny", "Amsterdam","Będzin", "Barlinek", "Białystok",
 "Bielsko-Biała", "Cedynia", "Chełm", "Chorzów", "Chojnice", "Chrzanów", "Czeladź,Darłówko", "Dąbrowa Górnicza",
 "Dobrodzień", "Elbląg", "Ełk", "Edynburg", "Frombork", "Frampol", "Facja", "Fidżi","Gdynia", "Gdańsk", "Gniezno",
