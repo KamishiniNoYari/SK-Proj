@@ -1,6 +1,7 @@
 import tkinter as tk
 import socket
 import time
+import math
 
 
 def connect(sock, connection_widgets, refresh_flags):
@@ -134,7 +135,79 @@ def refresh_start_game_widgets(start_game_widgets, connection_widgets, refresh_f
     else:
         start_game_widgets['start_btn'].config(state=tk.DISABLED)
 
+    refresh_flags['input_fields_widgets'] = True
     refresh_flags['start_game_widgets'] = False
+
+
+def init_input_fields_widgets(root, sock, refresh_flags):
+    country_label = tk.Label(root, text='Country')
+    country_entry = tk.Entry(root)
+    city_label = tk.Label(root, text='City')
+    city_entry = tk.Entry(root)
+    animal_label = tk.Label(root, text='Animal')
+    animal_entry = tk.Entry(root)
+    plant_label = tk.Label(root, text='Plant')
+    plant_entry = tk.Entry(root)
+    name_label = tk.Label(root, text='Name')
+    name_entry = tk.Entry(root)
+
+    send_btn = tk.Button(
+        root,
+        command=lambda: print('IMPLEMENT SEND'),
+        text='SEND',
+        state=tk.DISABLED
+    )
+
+    input_fields_widgets = {
+        'country_label': country_label,
+        'country_entry': country_entry,
+        'city_label': city_label,
+        'city_entry': city_entry,
+        'animal_label': animal_label,
+        'animal_entry': animal_entry,
+        'plant_label': plant_label,
+        'plant_entry': plant_entry,
+        'name_label': name_label,
+        'name_entry': name_entry,
+        'send_btn': send_btn,
+
+        'sent': False
+    }
+
+    rely_labels = 0.25
+    rely_entries = 0.3
+    relx_distance = 1 / 5.0
+    margin_left_labels = 0.05
+    margin_left_entries = 0.02
+
+    for idx, key in enumerate(input_fields_widgets):
+        if idx < 10:
+            if idx % 2 == 0:
+                input_fields_widgets[key].place(
+                    relx=margin_left_labels + math.floor(idx / 2) * relx_distance + 0.02,
+                    rely=rely_labels
+                )
+            else:
+                input_fields_widgets[key].place(
+                    relx=margin_left_entries + math.floor(idx / 2) * relx_distance,
+                    rely=rely_entries
+                )
+
+    send_btn.place(relx=0.5, rely=0.4, anchor=tk.CENTER)
+
+    return input_fields_widgets
+
+
+def refresh_input_fields_widgets(input_fields_widgets, start_game_widgets, refresh_flags):
+    if start_game_widgets['started'] and not(input_fields_widgets['sent']):
+        input_fields_widgets['send_btn'].config(
+            state=tk.ACTIVE
+        )
+    else:
+        input_fields_widgets['send_btn'].config(
+            state=tk.DISABLED
+        )
+    refresh_flags['input_fields_widgets'] = False
 
 
 def socket_reset(connection_widgets, start_game_widgets, refresh_flags):
@@ -162,22 +235,23 @@ def destroy_window(refresh_flags):
 
 def main():
     root = tk.Tk()
-    running = True
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     refresh_flags = {
         'connection_widgets': False,
         'start_game_widgets': False,
+        'input_fields_widgets': False,
         'socket_reset': False,
 
         'running': True
     }
 
-    root.geometry('600x400')
+    root.geometry('1000x800')
     root.title('Client')
     root.protocol('WM_DELETE_WINDOW', lambda: destroy_window(refresh_flags))
 
     connection_widgets = init_connection_widgets(root, sock, refresh_flags)
     start_game_widgets = init_start_game_widgets(root, sock, refresh_flags)
+    input_fields_widgets = init_input_fields_widgets(root, sock, refresh_flags)
 
     while refresh_flags['running']:
         root.update()
@@ -188,6 +262,9 @@ def main():
 
         if refresh_flags['start_game_widgets']:
             refresh_start_game_widgets(start_game_widgets, connection_widgets, refresh_flags)
+
+        if refresh_flags['input_fields_widgets']:
+            refresh_input_fields_widgets(input_fields_widgets, start_game_widgets, refresh_flags)
 
         if refresh_flags['socket_reset']:
             sock = socket_reset(connection_widgets, start_game_widgets, refresh_flags)
