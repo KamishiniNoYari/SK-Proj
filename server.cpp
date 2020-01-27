@@ -29,6 +29,7 @@ condition_variable cv;
 bool gamestarted = false;
 bool roundfinish = false;
 unordered_map<int, int> timeaswered;
+bool endgame = false;
 int main() {
     int new_socket;
     struct sockaddr_in new_address;
@@ -73,10 +74,12 @@ int main() {
 
 
     //Create new sockets loop
-    while(true){
+    while(!endgame){
         //Wait for a client and accept
-        if((new_socket = accept(server_fd,NULL,NULL)) < 0)
+        if(endgame||(new_socket = accept(server_fd,NULL,NULL)) < 0)
         {
+            if(endgame){close(server_fd);
+                return 0;};
             perror("Failed to accept client");
             close(server_fd);
             exit(1);
@@ -91,6 +94,8 @@ int main() {
         pthread_t threadid;
         pthread_create(&threadid, NULL,client_handler, (void *)&new_socket);
     }
+    shutdown(server_fd,SHUT_RDWR);
+    close(server_fd);
 
 
     return 0;
@@ -224,7 +229,6 @@ int isname(string word, char letter)
         else result = 0;
     }
     return result;
-    return 10;
 }
 string placechecker(int fd,unordered_map<int,int> points)
 {
@@ -252,7 +256,6 @@ void * timer_handler(void *arg)
     srand(time(NULL));
 
     char random_letter;
-    \
     unordered_map<int, int> points;
     int actual_time = 0;
     int players_answered = 0;
@@ -290,16 +293,15 @@ void * timer_handler(void *arg)
                     isanimal(value[2],random_letter)+
                     isplant(value[3],random_letter)+
                     isname(value[4],random_letter);
-            if (timeaswered[key] !=-1) {points[key]+=15 - 0.5*timeaswered[key];}
+            if (timeaswered[key] !=-1 && timeaswered[key]<=30) {points[key]+=15 - 0.5*timeaswered[key];}
             string point_mess=to_string(points[key]);
             timeaswered[key]=-1;
             global_answers[key].clear();
             char point_message[BUFFER_SIZE];
-            memset(point_message,'\n',sizeof(point_mess));
             for(int i=0;i<sizeof(point_mess);i++){
                 if(point_mess[i]=='\n')break;
                 point_message[i]=point_mess[i];}
-            write(key,point_message,sizeof(point_message));
+            write(key,point_message,3);
         }
         actual_time = 0;
         for ( int player : sockets){timeaswered[player] = -1;}
@@ -315,6 +317,9 @@ void * timer_handler(void *arg)
             }
             //przechodzimy do wysyłania rankingu i odłączamy użytkowników
             //do zrobienia
+            endgame=true;
+            shutdown(server_fd,SHUT_RDWR);
+            pthread_exit(NULL);
         }
     }
     return (void *)0;
@@ -337,10 +342,20 @@ void * client_handler(void * arg)
         if(valread==-1)
         {
             perror("Read error");
-            exit(EXIT_FAILURE);
+            //exit(EXIT_FAILURE);
         }
         string readstring = "";
-        readstring.append(buffer,valread-1);
+        try {
+            readstring.append(buffer, valread - 1);
+        }
+        catch(length_error)
+        {
+            perror("Length error");
+            close(client_sock);
+            sockets.erase(remove(sockets.begin(),sockets.end(),client_sock),sockets.end());
+            players--;
+            pthread_exit(NULL);
+        }
 
         if(readstring == START && !starting){
             starting = true;
