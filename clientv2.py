@@ -41,6 +41,39 @@ def start_game(sock, refresh_flags, start_game_widgets):
         print(e)
 
 
+def send_answer(sock, input_fields_widgets, refresh_flags, root):
+    error = validate_inputs(input_fields_widgets)
+    if not error:
+        try:
+            country = input_fields_widgets['country_entry'].get()
+            city = input_fields_widgets['city_entry'].get()
+            animal = input_fields_widgets['animal_entry'].get()
+            plant = input_fields_widgets['plant_entry'].get()
+            name = input_fields_widgets['name_entry'].get()
+            answer = f'AN {country};{city};{animal};{plant};{name};'.encode('utf-8')
+            print(answer)
+
+            sock.send(answer)
+        except Exception as e:
+            print(e)
+
+    else:
+        popup = tk.Toplevel(root)
+        popup.title('Error')
+        position_x = root.winfo_x() + 450
+        position_y = root.winfo_y() + 350
+        popup.geometry(f'+{position_x}+{position_y}')
+
+        label = tk.Label(popup, text='Remove all semicolons from inputs')
+        label.grid(column=0, row=0)
+
+        accept_btn = tk.Button(popup, command=popup.destroy, text='OK')
+        accept_btn.grid(column=0, row=1)
+
+        print(root.winfo_x(), root.winfo_height())
+        print(error)
+
+
 def init_connection_widgets(root, sock, refresh_flags):
     # Not connected widgets
     host_label = tk.Label(root, text="Host: ")
@@ -52,6 +85,8 @@ def init_connection_widgets(root, sock, refresh_flags):
         command=lambda: connect(sock, connection_widgets, refresh_flags),
         text="Connect"
     )
+    host_entry.insert(0, 'localhost')
+    port_entry.insert(0, '8000')
 
     # Connected widgets
     connected_label = tk.Label(root)
@@ -153,7 +188,8 @@ def init_input_fields_widgets(root, sock, refresh_flags):
 
     send_btn = tk.Button(
         root,
-        command=lambda: print('IMPLEMENT SEND'),
+        # command=lambda: print('IMPLEMENT SEND'),
+        command=lambda: send_answer(sock, input_fields_widgets, refresh_flags, root),
         text='SEND',
         state=tk.DISABLED
     )
@@ -199,7 +235,7 @@ def init_input_fields_widgets(root, sock, refresh_flags):
 
 
 def refresh_input_fields_widgets(input_fields_widgets, start_game_widgets, refresh_flags):
-    if start_game_widgets['started'] and not(input_fields_widgets['sent']):
+    if start_game_widgets['started'] and not input_fields_widgets['sent']:
         input_fields_widgets['send_btn'].config(
             state=tk.ACTIVE
         )
@@ -210,7 +246,19 @@ def refresh_input_fields_widgets(input_fields_widgets, start_game_widgets, refre
     refresh_flags['input_fields_widgets'] = False
 
 
-def socket_reset(connection_widgets, start_game_widgets, refresh_flags):
+def validate_inputs(input_fields_widgets):
+    errors = list()
+    for idx, key in enumerate(input_fields_widgets):
+        if idx % 2 == 1 and idx < 10:
+            entry = input_fields_widgets[key].get()
+            if ";" in input_fields_widgets[key].get():
+                errors.append([key, '; in entry'])
+            print(f'; in {input_fields_widgets[key].get()}: {";" in entry}')
+
+    return errors
+
+
+def socket_reset(connection_widgets, start_game_widgets, input_fields_widgets, refresh_flags, root):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     start_game_widgets['start_btn'].config(
@@ -221,6 +269,9 @@ def socket_reset(connection_widgets, start_game_widgets, refresh_flags):
     )
     connection_widgets['disconnect_btn'].config(
         command=lambda: disconnect(sock, connection_widgets, refresh_flags)
+    )
+    input_fields_widgets['send_btn'].config(
+        command=lambda: send_answer(sock, input_fields_widgets, refresh_flags, root)
     )
 
     refresh_flags['socket_reset'] = False
@@ -267,7 +318,12 @@ def main():
             refresh_input_fields_widgets(input_fields_widgets, start_game_widgets, refresh_flags)
 
         if refresh_flags['socket_reset']:
-            sock = socket_reset(connection_widgets, start_game_widgets, refresh_flags)
+            sock = socket_reset(connection_widgets,
+                                start_game_widgets,
+                                input_fields_widgets,
+                                refresh_flags,
+                                root
+                                )
 
         time.sleep(0.01)
 
