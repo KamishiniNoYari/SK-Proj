@@ -2,20 +2,22 @@ import tkinter as tk
 import socket
 import time
 import math
+import threading
 
 
-def connect(sock, connection_widgets, refresh_flags):
+def connect(sock, connection_widgets, refresh_flags, listener_thread):
     try:
         host = connection_widgets['host_entry'].get()
         port = int(connection_widgets['port_entry'].get())
         sock.connect((host, port))
-        sock.send(b'CONNECTED')
 
         connection_widgets['host'] = host
         connection_widgets['port'] = port
 
         connection_widgets['connected'] = True
         refresh_flags['connection_widgets'] = True
+
+        listener_thread.start()
     except Exception as e:
         print(e)
 
@@ -33,7 +35,7 @@ def disconnect(sock, connection_widgets, refresh_flags):
 
 def start_game(sock, refresh_flags, start_game_widgets):
     try:
-        sock.send(b'START')
+        sock.send(b'START\n')
 
         start_game_widgets['started'] = True
         refresh_flags['start_game_widgets'] = True
@@ -50,7 +52,7 @@ def send_answer(sock, input_fields_widgets, refresh_flags, root):
             animal = input_fields_widgets['animal_entry'].get()
             plant = input_fields_widgets['plant_entry'].get()
             name = input_fields_widgets['name_entry'].get()
-            answer = f'AN {country};{city};{animal};{plant};{name};'.encode('utf-8')
+            answer = f'AN {country};{city};{animal};{plant};{name};\n'.encode('utf-8')
             print(answer)
 
             sock.send(answer)
@@ -70,11 +72,10 @@ def send_answer(sock, input_fields_widgets, refresh_flags, root):
         accept_btn = tk.Button(popup, command=popup.destroy, text='OK')
         accept_btn.grid(column=0, row=1)
 
-        print(root.winfo_x(), root.winfo_height())
         print(error)
 
 
-def init_connection_widgets(root, sock, refresh_flags):
+def init_connection_widgets(root, sock, refresh_flags, threads):
     # Not connected widgets
     host_label = tk.Label(root, text="Host: ")
     host_entry = tk.Entry(root)
@@ -82,7 +83,12 @@ def init_connection_widgets(root, sock, refresh_flags):
     port_entry = tk.Entry(root)
     connect_btn = tk.Button(
         root,
-        command=lambda: connect(sock, connection_widgets, refresh_flags),
+        command=lambda: connect(
+            sock,
+            connection_widgets,
+            refresh_flags,
+            threads['listener_thread']
+        ),
         text="Connect"
     )
     host_entry.insert(0, 'localhost')
@@ -154,12 +160,22 @@ def init_start_game_widgets(root, sock, refresh_flags):
         text="START GAME"
     )
 
+    letter_label = tk.Label(root, text='Letter: ', font=('font', 18))
+    letter_label.place(relx=0.06, rely=0.19)
+    points_label = tk.Label(root, text='Points: ', font=('font', 18))
+    points_label.place(relx=0.25, rely=0.19)
+
     start_game_widgets = {
         'start_btn': start_btn,
-        'started': False
+        'started': False,
+
+        'letter_label': letter_label,
+        'letter': '',
+        'points_label': points_label,
+        'points': ''
     }
 
-    start_btn.place(relx=0.5, y=50, anchor=tk.CENTER)
+    start_btn.place(relx=0.5, rely=0.12, anchor=tk.CENTER)
 
     return start_game_widgets
 
@@ -258,14 +274,14 @@ def validate_inputs(input_fields_widgets):
     return errors
 
 
-def socket_reset(connection_widgets, start_game_widgets, input_fields_widgets, refresh_flags, root):
+def socket_reset(connection_widgets, start_game_widgets, input_fields_widgets, refresh_flags, root, listener_thread):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     start_game_widgets['start_btn'].config(
         command=lambda: start_game(sock, refresh_flags, start_game_widgets)
     )
     connection_widgets['connect_btn'].config(
-        command=lambda: connect(sock, connection_widgets, refresh_flags)
+        command=lambda: connect(sock, connection_widgets, refresh_flags, listener_thread)
     )
     connection_widgets['disconnect_btn'].config(
         command=lambda: disconnect(sock, connection_widgets, refresh_flags)
@@ -277,6 +293,82 @@ def socket_reset(connection_widgets, start_game_widgets, input_fields_widgets, r
     refresh_flags['socket_reset'] = False
 
     return sock
+
+
+def handle_round_start(start_game_widgets, input_fields_widgets, refresh_flags):
+    start_game_widgets['start_btn'].config(state=tk.DISABLED)
+    input_fields_widgets['send_btn'].config(state=tk.ACTIVE)
+    start_game_widgets['letter_label'].config(
+        text=f'Letter: {start_game_widgets["letter"]}'
+    )
+
+    refresh_flags['round_started'] = False
+
+
+def handle_place_and_score(start_game_widgets, input_fields_widgets, refresh_flags):
+    print(start_game_widgets)
+    start_game_widgets['points_label'].config(
+        text=f'Points: {start_game_widgets["points"]}'
+    )
+
+    refresh_flags['round_finished'] = False
+
+
+def listener(sock, connection_widgets, start_game_widgets, refresh_flags):
+    counting = False
+    while connection_widgets['connected']:
+        response = sock.recv(512).decode('utf-8')
+
+        if len(response) == 0:
+            break
+
+        response = response.split('\x00')
+
+        letter = ''
+        for res in response:
+            print(f'res: {res}, counting: {counting}')
+            if len(res) == 0:
+                pass
+            elif res[0].islower():
+                letter = res[0]
+                start_game_widgets['letter'] = letter
+            elif res[:2] == 'RO':
+                refresh_flags['round_started'] = True
+            elif res[:2] == 'CP':
+                counting = True
+            elif res[:3] == 'EOR':
+                pass
+            elif res[:4] == 'END':
+                pass
+            elif res[:5] == 'PLACE':
+                pass
+            elif counting:
+                try:
+                    print('GETTING SCORE')
+                    _ = int(res)
+                    start_game_widgets['points'] = res
+                    counting = False
+                    refresh_flags['round_finished'] = True
+                except ValueError:
+                    print(f'{res} is not a number')
+
+        # answer = sock.recv(64).decode('utf-8')
+        # if len(answer) == 0:
+            # break
+
+        # print(answer.split('\x00'))
+
+        # letter = ''
+        # if len(answer) == 3 and answer[0].islower():
+            # letter = answer[0]
+        # elif len(answer) == 7 and answer[0].islower():
+            # letter = answer[0]
+            # refresh_flags['round_started'] = True
+        # elif answer[:2] == 'RO':
+            # refresh_flags['round_started'] = True
+
+        # if letter:
+            # start_game_widgets['letter'] = letter
 
 
 def destroy_window(refresh_flags):
@@ -292,6 +384,8 @@ def main():
         'start_game_widgets': False,
         'input_fields_widgets': False,
         'socket_reset': False,
+        'round_started': False,
+        'round_finished': False,
 
         'running': True
     }
@@ -300,9 +394,18 @@ def main():
     root.title('Client')
     root.protocol('WM_DELETE_WINDOW', lambda: destroy_window(refresh_flags))
 
-    connection_widgets = init_connection_widgets(root, sock, refresh_flags)
+    threads = dict()
+
+    connection_widgets = init_connection_widgets(root, sock, refresh_flags, threads)
     start_game_widgets = init_start_game_widgets(root, sock, refresh_flags)
     input_fields_widgets = init_input_fields_widgets(root, sock, refresh_flags)
+
+    listener_thread = threading.Thread(
+        target=listener,
+        args=(sock, connection_widgets, start_game_widgets, refresh_flags),
+        daemon=True
+    )
+    threads['listener_thread'] = listener_thread
 
     while refresh_flags['running']:
         root.update()
@@ -318,12 +421,20 @@ def main():
             refresh_input_fields_widgets(input_fields_widgets, start_game_widgets, refresh_flags)
 
         if refresh_flags['socket_reset']:
-            sock = socket_reset(connection_widgets,
-                                start_game_widgets,
-                                input_fields_widgets,
-                                refresh_flags,
-                                root
-                                )
+            sock = socket_reset(
+                connection_widgets,
+                start_game_widgets,
+                input_fields_widgets,
+                refresh_flags,
+                root,
+                listener_thread
+            )
+
+        if refresh_flags['round_started']:
+            handle_round_start(start_game_widgets, input_fields_widgets, refresh_flags)
+
+        if refresh_flags['round_finished']:
+            handle_place_and_score(start_game_widgets, input_fields_widgets, refresh_flags)
 
         time.sleep(0.01)
 
