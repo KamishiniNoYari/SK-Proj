@@ -284,9 +284,9 @@ void * timer_handler(void *arg)
         unique_lock<mutex> lk(m1);
         cv.wait_until(lk,std::chrono::system_clock::now()+30s,[]{return roundfinish;});
         players_answered=0;
-        sendtoall("End of round\n");
+        sendtoall("EOR\n");
         //calculation points
-        sendtoall("Calculating points\n");
+        sendtoall("CP\n");
         for( const auto&[key, value]: global_answers){
             points[key]+=iscountry(value[0],random_letter)+
                     iscity(value[1],random_letter)+
@@ -301,7 +301,7 @@ void * timer_handler(void *arg)
             for(int i=0;i<sizeof(point_mess);i++){
                 if(point_mess[i]=='\n')break;
                 point_message[i]=point_mess[i];}
-            write(key,point_message,3);
+            write(key,point_message,5);
         }
         actual_time = 0;
         for ( int player : sockets){timeaswered[player] = -1;}
