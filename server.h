@@ -80,7 +80,7 @@ const string names[] = {"Ala", "Alicja", "Anna", "Adam", "Adolf", "Aleksander", 
 "Karolina", "Kinga", "Liza", "Laura", "Lena", "Lucyfer", "Leszek", "Małgosia", "Mateusz", "Marek", "Natalia",
 "Natan", "Nikola", "Ola", "Olek", "Paulina", "Paweł", "Patryk", "Piotrek", "Radek", "Róża", "Sebastian", "Staszek",
 "Tomek", "Tadeusz", "Ula", "Wiktoria", "Wiktor", "Zuzia", "Zdzisław"};
-const int roundsNumber = 1;
+const int roundsNumber = 2;
 
 
 void * client_handler(void * arg);
