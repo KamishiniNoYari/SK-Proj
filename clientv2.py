@@ -55,6 +55,7 @@ def send_answer(sock, input_fields_widgets, refresh_flags, root):
             answer = f'AN {country};{city};{animal};{plant};{name};\n'.encode('utf-8')
             print(answer)
 
+            print('DISABLE SEND 58')
             input_fields_widgets['send_btn'].config(
                 state=tk.DISABLED
             )
@@ -259,10 +260,12 @@ def init_input_fields_widgets(root, sock, refresh_flags):
 
 def refresh_input_fields_widgets(input_fields_widgets, start_game_widgets, refresh_flags):
     if start_game_widgets['started'] and not input_fields_widgets['sent']:
+        print('ACTIVATE SEND 263')
         input_fields_widgets['send_btn'].config(
             state=tk.ACTIVE
         )
     else:
+        print('DISABLE SEND 268')
         input_fields_widgets['send_btn'].config(
             state=tk.DISABLED
         )
@@ -303,7 +306,9 @@ def socket_reset(connection_widgets, start_game_widgets, input_fields_widgets, r
 
 
 def handle_round_start(start_game_widgets, input_fields_widgets, refresh_flags):
+    print('ROUND START')
     start_game_widgets['start_btn'].config(state=tk.DISABLED)
+    print('ACTIVATE SEND 311')
     input_fields_widgets['send_btn'].config(state=tk.ACTIVE)
     start_game_widgets['letter_label'].config(
         text=f'Letter: {start_game_widgets["letter"]}'
@@ -322,12 +327,13 @@ def handle_place_and_score(start_game_widgets, input_fields_widgets, refresh_fla
         )
 
         refresh_flags['new_points'] = False
-    elif refresh_flags['round_finished']:
-        input_fields_widgets['send_btn'].config(
-            state=tk.DISABLED
-        )
+    # if refresh_flags['round_finished']:
+        # print('DISABLE SEND 331')
+        # input_fields_widgets['send_btn'].config(
+            # state=tk.DISABLED
+        # )
 
-        refresh_flags['round_finished'] = False
+        # refresh_flags['round_finished'] = False
 
 
 def handle_end(start_game_widgets, input_fields_widgets, refresh_flags):
@@ -368,14 +374,14 @@ def listener(sock, connection_widgets, start_game_widgets, refresh_flags):
                 refresh_flags['round_started'] = True
             elif res[:2] == 'CP':
                 counting = True
-            elif res[:3] == 'EOR':
-                refresh_flags['round_finished'] = True
+            # elif res[:3] == 'EOR':
+                # refresh_flags['round_finished'] = True
             # elif res[:4] == 'END':
                 # end = True
             elif res[:5] == 'PLACE':
                 start_game_widgets['place'] = res[6]
                 refresh_flags['end'] = True
-                end = False
+                # end = False
             elif counting:
                 try:
                     print('GETTING SCORE')
@@ -401,7 +407,7 @@ def main():
         'input_fields_widgets': False,
         'socket_reset': False,
         'round_started': False,
-        'round_finished': False,
+        # 'round_finished': False,
         'new_points': False,
         'end': False,
 
@@ -451,7 +457,8 @@ def main():
         if refresh_flags['round_started']:
             handle_round_start(start_game_widgets, input_fields_widgets, refresh_flags)
 
-        if refresh_flags['round_finished'] or refresh_flags['new_points']:
+        # if refresh_flags['round_finished'] or refresh_flags['new_points']:
+        if refresh_flags['new_points']:
             handle_place_and_score(start_game_widgets, input_fields_widgets, refresh_flags)
 
         if refresh_flags['end']:
