@@ -366,7 +366,7 @@ void * client_handler(void * arg)
                 cv.notify_all();
             }
         }
-        if(readstring.substr(0,2) == ROUND ||readstring.substr(3,5) == ROUND)
+        if(readstring.substr(0,2) == ROUND ||(readstring.substr(0,2) != AMSWER && readstring.substr(3,5) == ROUND))
         {
             auto start = std::chrono::system_clock::now();
         }
