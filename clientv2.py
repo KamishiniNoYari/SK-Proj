@@ -55,6 +55,10 @@ def send_answer(sock, input_fields_widgets, refresh_flags, root):
             answer = f'AN {country};{city};{animal};{plant};{name};\n'.encode('utf-8')
             print(answer)
 
+            input_fields_widgets['send_btn'].config(
+                state=tk.DISABLED
+            )
+
             sock.send(answer)
         except Exception as e:
             print(e)
@@ -164,6 +168,7 @@ def init_start_game_widgets(root, sock, refresh_flags):
     letter_label.place(relx=0.06, rely=0.19)
     points_label = tk.Label(root, text='Points: ', font=('font', 18))
     points_label.place(relx=0.25, rely=0.19)
+    place_label = tk.Label(root)
 
     start_game_widgets = {
         'start_btn': start_btn,
@@ -172,7 +177,9 @@ def init_start_game_widgets(root, sock, refresh_flags):
         'letter_label': letter_label,
         'letter': '',
         'points_label': points_label,
-        'points': ''
+        'points': '',
+        'place_label': place_label,
+        'place': ''
     }
 
     start_btn.place(relx=0.5, rely=0.12, anchor=tk.CENTER)
@@ -301,21 +308,46 @@ def handle_round_start(start_game_widgets, input_fields_widgets, refresh_flags):
     start_game_widgets['letter_label'].config(
         text=f'Letter: {start_game_widgets["letter"]}'
     )
+    for idx, key in enumerate(input_fields_widgets):
+        if idx < 10 and idx % 2 == 1:
+            input_fields_widgets[key].delete(0, 'end')
 
     refresh_flags['round_started'] = False
 
 
 def handle_place_and_score(start_game_widgets, input_fields_widgets, refresh_flags):
-    print(start_game_widgets)
-    start_game_widgets['points_label'].config(
-        text=f'Points: {start_game_widgets["points"]}'
-    )
+    if refresh_flags['new_points']:
+        start_game_widgets['points_label'].config(
+            text=f'Points: {start_game_widgets["points"]}'
+        )
 
-    refresh_flags['round_finished'] = False
+        refresh_flags['new_points'] = False
+    elif refresh_flags['round_finished']:
+        input_fields_widgets['send_btn'].config(
+            state=tk.DISABLED
+        )
+
+        refresh_flags['round_finished'] = False
+
+
+def handle_end(start_game_widgets, input_fields_widgets, refresh_flags):
+    print('ENDING GAME')
+    start_game_widgets['place_label'].config(
+        text=f'GAME FINISHED, PLACE {start_game_widgets["place"]}',
+        font=('font', 18)
+    )
+    start_game_widgets['place_label'].place(relx=0.35, rely=0.6)
+
+    for idx, key in enumerate(input_fields_widgets):
+        if idx < 10 and idx % 2 == 1:
+            input_fields_widgets[key].delete(0, 'end')
+
+    refresh_flags['end'] = False
 
 
 def listener(sock, connection_widgets, start_game_widgets, refresh_flags):
     counting = False
+    # end = False
     while connection_widgets['connected']:
         response = sock.recv(512).decode('utf-8')
 
@@ -326,7 +358,7 @@ def listener(sock, connection_widgets, start_game_widgets, refresh_flags):
 
         letter = ''
         for res in response:
-            print(f'res: {res}, counting: {counting}')
+            print(res)
             if len(res) == 0:
                 pass
             elif res[0].islower():
@@ -337,38 +369,22 @@ def listener(sock, connection_widgets, start_game_widgets, refresh_flags):
             elif res[:2] == 'CP':
                 counting = True
             elif res[:3] == 'EOR':
-                pass
-            elif res[:4] == 'END':
-                pass
+                refresh_flags['round_finished'] = True
+            # elif res[:4] == 'END':
+                # end = True
             elif res[:5] == 'PLACE':
-                pass
+                start_game_widgets['place'] = res[6]
+                refresh_flags['end'] = True
+                end = False
             elif counting:
                 try:
                     print('GETTING SCORE')
                     _ = int(res)
                     start_game_widgets['points'] = res
                     counting = False
-                    refresh_flags['round_finished'] = True
+                    refresh_flags['new_points'] = True
                 except ValueError:
                     print(f'{res} is not a number')
-
-        # answer = sock.recv(64).decode('utf-8')
-        # if len(answer) == 0:
-            # break
-
-        # print(answer.split('\x00'))
-
-        # letter = ''
-        # if len(answer) == 3 and answer[0].islower():
-            # letter = answer[0]
-        # elif len(answer) == 7 and answer[0].islower():
-            # letter = answer[0]
-            # refresh_flags['round_started'] = True
-        # elif answer[:2] == 'RO':
-            # refresh_flags['round_started'] = True
-
-        # if letter:
-            # start_game_widgets['letter'] = letter
 
 
 def destroy_window(refresh_flags):
@@ -386,6 +402,8 @@ def main():
         'socket_reset': False,
         'round_started': False,
         'round_finished': False,
+        'new_points': False,
+        'end': False,
 
         'running': True
     }
@@ -433,8 +451,11 @@ def main():
         if refresh_flags['round_started']:
             handle_round_start(start_game_widgets, input_fields_widgets, refresh_flags)
 
-        if refresh_flags['round_finished']:
+        if refresh_flags['round_finished'] or refresh_flags['new_points']:
             handle_place_and_score(start_game_widgets, input_fields_widgets, refresh_flags)
+
+        if refresh_flags['end']:
+            handle_end(start_game_widgets, input_fields_widgets, refresh_flags)
 
         time.sleep(0.01)
 
